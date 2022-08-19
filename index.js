@@ -1,49 +1,36 @@
-const http = require("http");
-const path = require("path");
-const fs = require("fs");
+'use strict';
 
-(async () => {
-  const isFile = (path) => fs.lstatSync(path).isFile();
+const socket = require('socket.io');
+const http = require('http');
+const path = require('path');
+const fs = require('fs');
 
-  http
-    .createServer((req, res) => {
-      const fullPath = path.join(process.cwd(), req.url);
+const server = http.createServer((req, res) => {
+    const indexPath = path.join(__dirname, 'index.html');
+    const readStream = fs.createReadStream(indexPath);
 
-      if (!fs.existsSync(fullPath))
-        return res.end("File or directory not found");
+    readStream.pipe(res);
+});
 
-      if (isFile(fullPath)) {
-        return fs.createReadStream(fullPath).pipe(res);
-      }
+const io = socket(server);
 
-      let linksList = "";
+io.on('connection', client => {
+    console.log('New client connected!');
 
-      // advanced
-      const urlParams = req.url.match(/[\d\w\.-]+/gi);
+    client.on('client-entered', message => {
+        client.broadcast.emit('server-entered', message);
+        client.emit('server-entered', message);
+    });
 
-      if (urlParams) {
-        urlParams.pop();
-        const prevUrl = urlParams.join("/");
-        linksList = urlParams.lengths
-          ? `<li><a href="/${prevUrl}">.. Back Page</a></li>`
-          : '<li><a href="/">.. Back Page</a></li>';
-      }
+    client.on('client-msg', data => {
+        client.broadcast.emit('server-msg', data);
+        client.emit('server-msg', data);
+    });
 
-      fs.readdirSync(fullPath).forEach((fileName) => {
-        const filePath = path.join(req.url, fileName);
+    client.on('client-exit', name => {
+        client.broadcast.emit('server-exit', name);
+        client.emit('server-exit', name);
+    });
+});
 
-        linksList += `<li><a href="${filePath}">${fileName}</a></li>`;
-      });
-
-      const HTML = fs
-        .readFileSync(path.join(__dirname, "index.html"), "utf-8")
-        .replace("##links", linksList);
-
-      res.writeHead(200, {
-        "Content-Type": "text/html",
-      });
-
-      return res.end(HTML);
-    })
-    .listen(3000);
-})();
+server.listen(3000);
